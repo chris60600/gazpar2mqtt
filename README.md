@@ -1,9 +1,8 @@
 # gazpar2mqtt
 Python script to fetch GRDF's website data and publish data to a mqtt broker
 
-![Gazpar logo](https://s2.qwant.com/thumbr/474x266/d/6/5f73ca2a6a6ad456cee493bb73bc9bf24662ded76a98c4eb0a117e16d666d2/th.jpg?u=https%3A%2F%2Ftse2.explicit.bing.net%2Fth%3Fid%3DOIP.Y_lVygaMR2JQYgTvLVvc5wHaEK%26pid%3DApi&q=0&b=1&p=0&a=0)
-
-![MQTT logo](https://s2.qwant.com/thumbr/474x266/e/b/0bb1caaf35b0ed78b567ce4ba21cffd3d22f8bc4a7c82a3ba331cc0dd88a23/th.jpg?u=https%3A%2F%2Ftse3.mm.bing.net%2Fth%3Fid%3DOIP.eK8FAO1DnuuVt6wYA1WOmAHaEK%26pid%3DApi&q=0&b=1&p=0&a=0)
+![Gazpar logo](res/gazpar.png)
+<img src="res/mqtt.png?raw=true" width="250" height="250">
 
 # Externals/Thanks
 The project has been inspired by job done by [empierre](https://github.com/empierre/domoticz_gaspar) on project domoticz_gazpar and [beufanet](https://github.com/beufanet/gazpar) on project gazinflux availables on Github. I modified a bit the code to work and fit my needs.
@@ -15,6 +14,14 @@ Important : the tool is still under development, various functions may disappear
 
 
 ## Changelogs :
+- v0.8.x :
+  - Export to Influxdb v2 database
+  - Grafana dashboard template
+  - Cost calculation from prices file
+  - Thanks to [pbranly](https://github.com/pbranly) for the tests
+
+- v0.7.x :
+  - Retrieve published measures to supplier
 
 - v0.6.x :
   - Implementation of a sqlite database
@@ -43,7 +50,6 @@ Important : the tool is still under development, various functions may disappear
 
 ## Roadmap :
 
-- Retrieve threesolds
 - Home assistant custom entity card
 
 # Requirements
@@ -61,6 +67,20 @@ pip3 install -r app/requirement.txt
 Verify you have gazpar data available on [GRDF Portal](https://monespace.grdf.fr/monespace/connexion)
 Remember, kWh provided is conversion factor dependant. Please verify it's coherent with your provider bills.
 
+Gazpar2mqtt request the API and retrieve 4 groups of data :
+
+### Account informations
+
+It corresponds to the customer profile, the list of PCE (Point de Comptage et d'Estimation) and its attributes (address, state, activation date)  
+
+### Informative measures
+
+GRDF provides informative measures at day level. The tool returns the last measure and several calculated indicators. 
+
+### Published measures
+
+GRDF provides published measures. It corresponds to consumptions measured by GRDF and transmitted to your gas supplier. Consequently, it should correspond to the consumption that the supplier invoices to the consumer.
+
 ### Thresolds
 
 Thresolds (Seuil) can be set on GRDF website for current and future months.
@@ -68,6 +88,24 @@ Thresolds (Seuil) can be set on GRDF website for current and future months.
 ![image](https://user-images.githubusercontent.com/31646663/147261741-5a45c17c-f621-4e1e-86e0-964eef81b435.png)
 
 The script can retrieve those informations and publish a warn when the thresold is close to being reached.
+
+## Prices
+
+Gazpar2mqtt can ingest your own energy prices to estimate your costs. Download and complete the sample file prices.csv using the following format :
+
+- PCE : your PCE id
+- startDate : starting date of the price
+- endDate : end date of the price (put a far far end date at the last row of the file, ie : 2999-12-31)
+- kwhPrice : the price per kWh (don't forget to apply the TVA to this cost, and to add the french energy tax per kwh)
+- fixPrice : the fix price per day (it corresponds for example to the price of your subscription with your gas provider, don't forget to apply the TVA)
+
+``` 
+pce;startDate;endDate;kwhPrice;fixPrice
+XXXX;2019-11-28;2020-12-27;0.03713;0.25
+XXXX;2020-12-28;2021-01-25;0.03472;0.30
+XXXX;2021-01-26;2099-12-31;0.03733;0.35
+``` 
+Then precise in parameters the path to the file prices.csv.
 
 ## MQTT broker
 
@@ -88,25 +126,35 @@ Mandatory :
 
 Optional :
 
-| Variable | Description | Default value |
-| --- | --- | --- |
-| **SCHEDULE_TIME** | Time for refreshing data everyday | None (format : 14:30) |
-| **MQTT_PORT** | Port of the MQTT broker | 1883 |
-| **MQTT_TOPIC** | Topic used as prefix | gazpar |
-| **MQTT_CLIENTID** | Client id to be used for connexion to the MQTT broker | gazou |
-| **MQTT_USERNAME** | Username to be used for connexion to the MQTT brokerr |  |
-| **MQTT_PASSWORD** | Password to be used for connexion to the MQTT broker |  |
-| **MQTT_QOS** | QOS for message publishing (0, 1 or 2) | 1 |
-| **MQTT_RETAIN** | Retain flag| False |
-| **MQTT_SSL** | Enable MQTT SSL connexion | False |
-| **STANDALONE_MODE** | Enable standalone publication mode | True |
-| **HASS_DISCOVERY** | Enable Home assistant dicovery mode | False |
-| **HASS_PREFIX** | Home assistant topic prefix | homeassistant |
-| **HASS_DEVICE_NAME** | Home assistant device name | gazpar |
-| **THRESOLD_PERCENTAGE** | Percentage of the thresold to be reached | 80 |
-| **DB_INIT** | Force reinitialization of the database | False |
-| **DB_PATH** | Database path | /data |
-| **DEBUG** | Enable debug mode| False |
+| Variable                | Description                                           | Default value        |
+|-------------------------|-------------------------------------------------------|----------------------|
+| **SCHEDULE_TIME**       | Time for refreshing data everyday                     | None (format : 14:30) |
+| **MQTT_PORT**           | Port of the MQTT broker                               | 1883                 |
+| **MQTT_TOPIC**          | Topic used as prefix                                  | gazpar               |
+| **MQTT_CLIENTID**       | Client id to be used for connexion to the MQTT broker | gazou                |
+| **MQTT_USERNAME**       | Username to be used for connexion to the MQTT brokerr |                      |
+| **MQTT_PASSWORD**       | Password to be used for connexion to the MQTT broker  |                      |
+| **MQTT_QOS**            | QOS for message publishing (0, 1 or 2)                | 1                    |
+| **MQTT_RETAIN**         | Retain flag                                           | False                |
+| **MQTT_SSL**            | Enable MQTT SSL connexion                             | False                |
+| **STANDALONE_MODE**     | Enable standalone publication mode                    | True                 |
+| **HASS_DISCOVERY**      | Enable Home assistant dicovery mode                   | False                |
+| **HASS_PREFIX**         | Home assistant topic prefix                           | homeassistant        |
+| **HASS_DEVICE_NAME**    | Home assistant device name                            | gazpar               |
+| **THRESOLD_PERCENTAGE** | Percentage of the thresold to be reached              | 80                   |
+| **PRICE_PATH**          | Path to price.csv file                                | /data                |
+| **PRICE_KWH_DEFAULT**   | Energy price in € per kWh                             | 0.04                 |
+| **PRICE_FIX_DEFAULT**   | Fix price in € per day                                | 0.0                  |
+| **INFLUXDB_ENABLE**     | Activate export to Influxdb v2                        | False                |
+| **INFLUXDB_HOST**       | Host of influxdb                                      |                      |
+| **INFLUXDB_PORT**       | Port of influxdb                                      | 8086                 |
+| **INFLUXDB_ORG**        | Influxdb organization                                 |                      |
+| **INFLUXDB_BUCKET**     | Influxdb bucket                                       |                      |
+| **INFLUXDB_TOKEN**      | Influxdb token with read access to the bucket         |                      |
+| **INFLUXDB_HORIZON**    | Number of days in the past to be write to Influxdb    | 0 (= all data)       |
+| **DB_INIT**             | Force reinitialization of the database                | False                |
+| **DB_PATH**             | Database path                                         | /data                |
+| **DEBUG**               | Enable debug mode                                     | False                |
 
 
 # Usage
@@ -143,9 +191,9 @@ python3 app/gazpar2mqtt.py --help
 
 ![docker_logo](https://s1.qwant.com/thumbr/0x0/2/d/05170a4d28c2e2d0c394367d6db2e6f73292e9fbc305c087b51ee8b689e257/120px-Docker_(container_engine)_logo.png?u=https%3A%2F%2Fupload.wikimedia.org%2Fwikipedia%2Fcommons%2Fthumb%2Farchive%2F7%2F79%2F20140516082115!Docker_(container_engine)_logo.png%2F120px-Docker_(container_engine)_logo.png&q=0&b=1&p=0&a=0)
 
-Have a look the [docker repository](https://hub.docker.com/r/yukulehe/gazpar2mqtt) 
+Have a look the [docker repository](https://hub.docker.com/r/yukulehe/gazpar2mqtt).
 
-Example of docker run command with environment variables :
+Example of docker run command with some environment variables :
 
 ``` 
 docker run --name app/gazpar2mqtt -e GRDF_USERNAME=gazou@email.com -e GRDF_PASSWORD=password -e MQTT_HOST=192.168.1.99 -e MQTT_PORT=1883 -e MQTT_CLIENTID=gazou -e MQTT_QOS=1 -e MQTT_TOPIC=gazpar -e MQTT_RETAIN=False --tty yukulehe/gazpar2mqtt:latest
@@ -161,13 +209,25 @@ You can replace the default topic prefix *gazpar* (see mqtt broker requirements 
 
 Last measures :
 
-| Topic | Description |
-| --- | --- |
-| gazpar/PCE/index | Gas index in m3 of the last measure |
-| gazpar/PCE/date | Date of the last measure |
-| gazpar/PCE/energy | Gas consumption in kWh of the last measure |
-| gazpar/PCE/gas | Gas consumption in m3 of the last measure  |
-| gazpar/PCE/conversion_factor | Conversion factor in kWh/m3 of the last measure  |
+| Topic                        | Description |
+|------------------------------| --- |
+| gazpar/PCE/last/index        | Gas index in m3 of the last measure |
+| gazpar/PCE/last/date              | Date of the last measure |
+| gazpar/PCE/last/energy            | Gas consumption in kWh of the last measure |
+| gazpar/PCE/last/gas               | Gas consumption in m3 of the last measure  |
+| gazpar/PCE/last/conversion_factor | Conversion factor in kWh/m3 of the last measure  |
+
+Published  measures :
+
+| Topic                                  | Description                                               |
+|----------------------------------------|-----------------------------------------------------------|
+| gazpar/PCE/published/index             | Gas index in m3 of the last published measure             |
+| gazpar/PCE/published/start_date        | Start date of the period of the last published measure    |
+| gazpar/PCE/published/end_date          | End date of the period of the last published measure                                   |
+| gazpar/PCE/published/energy            | Gas consumption in kWh of the last published measure      |
+| gazpar/PCE/published/gas               | Gas consumption in m3 of the last published measure       |
+| gazpar/PCE/published/conversion_factor | Conversion factor in kWh/m3 of the last published measure |
+
 
 Calculated calendar measures :
 
@@ -241,7 +301,7 @@ Note : you can replace the default device name *gazpar* by editing the related p
 
 ### List of entities :
 
-Last measure entities :
+Last informative measure entities :
 
 | Entity name | Component | Device class | Description |
 | --- | --- | --- | --- |
@@ -251,6 +311,15 @@ Last measure entities :
 | gazpar_PCE_consumption_date | Sensor | Date | Date of the last measure |
 | gazpar_PCE_connectivity | Binary sensor | Connectivity | Binary sensor which indicates if the last gazpar statement succeeded (ON) or failed (OFF) |
 
+Last published measure entities :
+
+| Entity name                                 | Component | Device class | Description                                                                               |
+|---------------------------------------------| --- | --- |-------------------------------------------------------------------------------------------|
+| gazpar_PCE_published_index                  | Sensor | Gas | Gas index in m3 of the last published measure                                             |
+| gazpar_PCE_published_gas                    | Sensor | Gas | Gas consumption in m3 of the last published measure                                       |
+| gazpar_PCE_published_energy                 | Sensor | Energy | Gas consumption in kWh of the last published measure                                      |
+| gazpar_PCE_published_consumption_start_date | Sensor | Date | Start date of the last published measure                                                  |
+| gazpar_PCE_published_consumption_end_date   | Sensor | Date | End date of the last published measure                                                    |
 
 Calendar measure entities :
 
@@ -304,3 +373,13 @@ Note : thresold percentage can be editable in environment variable.
 
 ### Add-on
 For Hass.io users, gazpar2mqtt is also available as an add-on provided by [alexbelgium](https://github.com/alexbelgium) (thanks you to him). Please visit the dedicated [repository](https://github.com/alexbelgium/hassio-addons/tree/master/gazpar2mqtt).
+
+
+## InfluxDb & Grafana
+
+You can activate export of data to your InfluxDb v2 database. InfluxDb v1 is currently not supported.
+
+Example of a Grafana dashboard using InfluxDb v2 and gazpar2mqtt measures :
+<img src="res/grafana_sample.png?raw=true" width="70%">
+
+To integrate this dashboard into Grafana, copy/paste content of file [grafana_sample.json](https://github.com/yukulehe/gazpar2mqtt/blob/main/sample/grafana_sample.json).
